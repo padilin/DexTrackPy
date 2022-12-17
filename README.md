@@ -10,3 +10,6 @@ A simple python project to track dex progress. It currently pulls all gen 9 and 
   - [ ] Shiny
   - [ ] Pokedex Completion
   - [ ] Simple living dex
+- [ ] Support images
+- [ ] Make the gui less ugly
+- [ ] CLI?
