@@ -32,9 +32,15 @@ def get_pkmn_page(url: str):
 
 
 def get_name_no_gender_from_serebii(pkmn_dict, pkmn_soup):
+    # <table> <- .parent.parent (holds all the rows in tr tags)
+    #     <tr> <- .parent (holds all the headers in td tags) AKA parent.parent.find_all(tr)[0]
+    #         <td> Headers
+    #     <tr> <- parent.parent.find_all(tr)[1]
+    #          <td> Data
     name_no_gender_row = pkmn_soup.find("td", class_="fooevo", string="Name").parent.parent
     headers = [x.text for x in name_no_gender_row.find_all("tr")[0].find_all("td")]
     for header in headers:
+        # Headers might differ, so build off existing
         pkmn_dict[header] = None
     data = name_no_gender_row.find_all("tr")[1].find_all("td")
     pkmn_dict["Name"] = data[0].text
@@ -50,6 +56,7 @@ def get_name_no_gender_from_serebii(pkmn_dict, pkmn_soup):
 
 
 def get_forms_from_serebii(pkmn_dict, serebii_soup: BeautifulSoup):
+    # Set default gender form for when pokemon don't have gender differences
     gender_forms = ["Uniform"]
     alt_forms = None
     if forms := _get_specific_form(serebii_soup, "Alternate Forms"):
@@ -61,9 +68,21 @@ def get_forms_from_serebii(pkmn_dict, serebii_soup: BeautifulSoup):
 
 
 def _get_specific_form(serebii_soup, search_string) -> List[str] | None:
+    # tbody <- alt_form_header.parent.parent
+    #     tr <- alt_form_header.parent
+    #         td "Alternate Forms" or "Gender Forms" <- alt_form_header
+    #     tr
+    #         td
+    #             table
+    #                 tbody
+    #                     tr <- alt_form_row.parent, this row contains all the forms
+    #                         td class pkmn <- alt_form_row / alt_form_header.parent.parent.find(td, class pkmn)
+
+    # searches for header
     if alt_form_header := serebii_soup.find(
         "td", class_="fooevo", string=search_string
     ):
+        # first .parent is the row, second .parent is the table
         alt_form_table = alt_form_header.parent.parent
         if alt_form_table:
             alt_form_row = alt_form_table.find("td", class_="pkmn").parent
@@ -92,14 +111,19 @@ def _log_response(response: httpx.Response):
 
 
 def generate_data(data_file: str | Path):
+    # Pull list of pkmn urls from serebii
+    # TODO: expose way to start from specific pkmn number, perhaps by index slice list from get_sv_pokedex?
     list_of_pkmn_urls = [f"https://serebii.net/{url}" for url in get_sv_pokedex()]
     logger.debug(f"Found {len(list_of_pkmn_urls)} Pokemon urls")
     for pkmn_url in list_of_pkmn_urls:
+        # process each url
         pkmn_list = []
         pkmn = get_pkmn_page(pkmn_url)
+        # Open/close on each url because ths is 400 requests and saving progress is nice.
         with open(data_file, "r", encoding="windows-1252") as pkmn_json:
             if pkmn_json:
                 pkmn_list = json.load(pkmn_json)
+        # For perfect living dex, need each gender form (if different) and also each alt form (red flabebe, blue, etc)
         all_forms = pkmn["Gender Forms"]
         if pkmn["Alt Forms"]:
             modify_all_forms = []
@@ -107,6 +131,7 @@ def generate_data(data_file: str | Path):
                 for gender_form in pkmn["Gender Forms"]:
                     modify_all_forms.append(f"{gender_form}+{alt_form}")
             all_forms = modify_all_forms
+        # Fill out an entry for each unique gender + alt form
         for form in all_forms:
             pkmn_list.append({
                 "Name": pkmn["Name"],
@@ -115,5 +140,6 @@ def generate_data(data_file: str | Path):
                 "NDex": pkmn["No."]["National"],
                 "Complete": False,
             })
+        # Save file. Encoding is from Serebii webpage.
         with open(data_file, "w", encoding="windows-1252") as pkmn_json:
             json.dump(pkmn_list, pkmn_json, indent=2)
