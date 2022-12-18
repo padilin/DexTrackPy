@@ -18,7 +18,9 @@ def get_sv_pokedex() -> List[str]:
 
     dex_soup = BeautifulSoup(response.content.decode(response.encoding), "lxml")
     raw_dex_list = dex_soup.find("option", string=pokedex_name).parent
-    return [x["value"] for x in raw_dex_list.find_all("option") if x.text != pokedex_name]
+    return [
+        x["value"] for x in raw_dex_list.find_all("option") if x.text != pokedex_name
+    ]
 
 
 def get_pkmn_page(url: str):
@@ -37,7 +39,9 @@ def get_name_no_gender_from_serebii(pkmn_dict, pkmn_soup):
     #         <td> Headers
     #     <tr> <- parent.parent.find_all(tr)[1]
     #          <td> Data
-    name_no_gender_row = pkmn_soup.find("td", class_="fooevo", string="Name").parent.parent
+    name_no_gender_row = pkmn_soup.find(
+        "td", class_="fooevo", string="Name"
+    ).parent.parent
     headers = [x.text for x in name_no_gender_row.find_all("tr")[0].find_all("td")]
     for header in headers:
         # Headers might differ, so build off existing
@@ -48,7 +52,9 @@ def get_name_no_gender_from_serebii(pkmn_dict, pkmn_soup):
     pkmn_dict["Gender Ratio"] = {"Male": None, "Female": None}
     for idx, item in enumerate(data):
         if item.text.startswith(tuple(["Paldea:", "National:"])):
-            pkmn_dict["No."][item.text.rstrip(": ")] = int(data[idx + 1].text.replace("#", ""))
+            pkmn_dict["No."][item.text.rstrip(": ")] = int(
+                data[idx + 1].text.replace("#", "")
+            )
         if item.text.startswith("Male ♂:"):
             pkmn_dict["Gender Ratio"]["Male"] = data[idx + 1].text
         if item.text.startswith("Female ♀:"):
@@ -92,7 +98,9 @@ def _get_specific_form(serebii_soup, search_string) -> List[str] | None:
 
 
 def get_url(url: str) -> httpx.Response:
-    with httpx.Client(event_hooks={"request": [_log_request], "response": [_log_response]}) as client:
+    with httpx.Client(
+        event_hooks={"request": [_log_request], "response": [_log_response]}
+    ) as client:
         response = client.get(url)
         if response.status_code == 200:
             return response
@@ -107,7 +115,9 @@ def _log_request(request: httpx.Request):
 
 def _log_response(response: httpx.Response):
     request = response.request
-    logger.info(f"Response event hook: {request.method} {request.url} - Status {response.status_code}")
+    logger.info(
+        f"Response event hook: {request.method} {request.url} - Status {response.status_code}"
+    )
 
 
 def generate_data(data_file: str | Path):
@@ -133,13 +143,15 @@ def generate_data(data_file: str | Path):
             all_forms = modify_all_forms
         # Fill out an entry for each unique gender + alt form
         for form in all_forms:
-            pkmn_list.append({
-                "Name": pkmn["Name"],
-                "Form": form,
-                "PDex": pkmn["No."]["Paldea"],
-                "NDex": pkmn["No."]["National"],
-                "Complete": False,
-            })
+            pkmn_list.append(
+                {
+                    "Name": pkmn["Name"],
+                    "Form": form,
+                    "PDex": pkmn["No."]["Paldea"],
+                    "NDex": pkmn["No."]["National"],
+                    "Complete": False,
+                }
+            )
         # Save file. Encoding is from Serebii webpage.
         with open(data_file, "w", encoding="windows-1252") as pkmn_json:
             json.dump(pkmn_list, pkmn_json, indent=2)
