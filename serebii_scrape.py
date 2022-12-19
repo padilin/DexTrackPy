@@ -86,11 +86,12 @@ def _get_specific_form(serebii_soup, search_string) -> List[str] | None:
 
     # searches for header
     if alt_form_header := serebii_soup.find(
-        "td", class_="fooevo", string=search_string
+            "td", class_="fooevo", string=search_string
     ):
         # first .parent is the row, second .parent is the table
         alt_form_table = alt_form_header.parent.parent
         if alt_form_table:
+            # TODO: Support multi line Altername Forms, such as Vivillion
             alt_form_row = alt_form_table.find("td", class_="pkmn").parent
             if alt_form_row:
                 return [form.b.text for form in alt_form_row]
@@ -99,7 +100,7 @@ def _get_specific_form(serebii_soup, search_string) -> List[str] | None:
 
 def get_url(url: str) -> httpx.Response:
     with httpx.Client(
-        event_hooks={"request": [_log_request], "response": [_log_response]}
+            event_hooks={"request": [_log_request], "response": [_log_response]}
     ) as client:
         response = client.get(url)
         if response.status_code == 200:
@@ -107,7 +108,7 @@ def get_url(url: str) -> httpx.Response:
 
 
 def _log_request(request: httpx.Request):
-    delay = 2
+    delay = .5
     logger.info(f"Resting for {delay} seconds to self-throttle")
     time.sleep(delay)
     logger.info(f"Request Event Hook: {request.method} {request.url}")
@@ -118,6 +119,83 @@ def _log_response(response: httpx.Response):
     logger.info(
         f"Response event hook: {request.method} {request.url} - Status {response.status_code}"
     )
+
+
+# Manual Intervention.
+# Serebii lists some forms not yet available in SV
+UNAVAILABLE_IN_SV = [
+    ("Pikachu", "Original Cap"),
+    ("Pikachu", "Hoenn Cap"),
+    ("Pikachu", "Sinnoh Cap"),
+    ("Pikachu", "Unova Cap"),
+    ("Pikachu", "Kalos Cap"),
+    ("Pikachu", "Alola Cap"),
+    ("Pikachu", "Partner Cap"),
+    ("Pikachu", "World Cap"),
+    ("Vivillon", "Meadow Pattern"),
+    ("Vivillon", "Polar Pattern"),
+    ("Vivillon", "Tundra Pattern"),
+    ("Vivillon", "Continental Pattern"),
+    ("Vivillon", "Garden Pattern"),
+    ("Vivillon", "Elegant Pattern"),
+    ("Vivillon", "Icy Snow Pattern"),
+    ("Vivillon", "Modern Pattern"),
+    ("Vivillon", "Marine Pattern"),
+    ("Vivillon", "Archipelago Pattern"),
+    ("Vivillon", "High Plains Pattern"),
+    ("Vivillon", "Sandstorm Pattern"),
+    ("Vivillon", "River Pattern"),
+    ("Vivillon", "Monsoon Pattern"),
+    ("Vivillon", "Savanna Pattern"),
+    ("Vivillon", "Sun Pattern"),
+    ("Vivillon", "Ocean Pattern"),
+    ("Vivillon", "Jungle Pattern"),
+    ("Vivillon", "Poké Ball Pattern"),
+    ("Raichu", "Alola Form"),
+    ("Lilligant", "Hisuian Form"),
+    ("Basculin", "White-Striped Form"),
+    ("Meowth", "Alola Form"),
+    ("Persian", "Alola Form"),
+    ("Diglett", "Alola Form"),
+    ("Dugtrio", "Alola Form"),
+    ("Sliggoo", "Hisuian Form"),
+    ("Goodra", "Hisuian Form"),
+    ("Grimer", "Alola Form"),
+    ("Muk", "Alola Form"),
+    ("Voltorb", "Hisuian Form"),
+    ("Electrode", "Hisuian Form"),
+    ("Growlithe", "Hisuian Form"),
+    ("Arcanine", "Hisuian Form"),
+    ("Zorua", "Hisuian Form"),
+    ("Zoroark", "Hisuian Form"),
+    ("Sneasel", "Hisuian Form"),
+    ("Mimikyu", "Busted Form"),
+    ("Eiscue", "Noice Face"),
+    ("Slowpoke", "Galarian Form"),
+    ("Slowbro", "Galarian Form"),
+    ("Slowking", "Galarian Form"),
+    ("Qwilfish", "Hisuian Form"),
+    ("Avalugg", "Hisuian Form"),
+    ("Braviary", "Hisuian Form"),
+    ("Gimmighoul", "Roaming Form"),
+]
+# Due to unavailable forms, some pkmn get skipped because their original form isn't listed
+TO_ADD = [
+    {
+        "Name": "Pikachu",
+        "Form": "Male",
+        "PDex": 74,
+        "NDex": 25,
+        "Complete": False
+    },
+    {
+        "Name": "Pikachu",
+        "Form": "Female",
+        "PDex": 74,
+        "NDex": 25,
+        "Complete": False
+    },
+]
 
 
 def generate_data(data_file: str | Path):
@@ -138,6 +216,9 @@ def generate_data(data_file: str | Path):
         if pkmn["Alt Forms"]:
             modify_all_forms = []
             for alt_form in pkmn["Alt Forms"]:
+                # Skip any forms shown on Serebii, but not available
+                if (pkmn["Name"], alt_form) in UNAVAILABLE_IN_SV:
+                    continue
                 for gender_form in pkmn["Gender Forms"]:
                     modify_all_forms.append(f"{gender_form}+{alt_form}")
             all_forms = modify_all_forms
@@ -155,3 +236,11 @@ def generate_data(data_file: str | Path):
         # Save file. Encoding is from Serebii webpage.
         with open(data_file, "w", encoding="windows-1252") as pkmn_json:
             json.dump(pkmn_list, pkmn_json, indent=2)
+    # Correct missing data
+    with open(data_file, "r", encoding="windows-1252") as pkmn_json:
+        pkmn_list = json.load(pkmn_json)
+        # Missing data on Serebii
+        for manual_added in TO_ADD:
+            pkmn_list.append(manual_added)
+    with open(data_file, "w", encoding="windows-1252") as pkmn_json:
+        json.dump(pkmn_list, pkmn_json, indent=2)

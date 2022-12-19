@@ -20,6 +20,7 @@ pkmn_dex = []
 pkmn_rows = []
 with open(JSON_FILE, "r", encoding="windows-1252") as pkmn_json:
     pkmn_dex = json.load(pkmn_json)
+    pkmn_dex = sorted(pkmn_dex, key=lambda d: d['PDex'])
 
 
 SETTINGS_FILE = "data/settings.json"
@@ -31,7 +32,7 @@ if Path(SETTINGS_FILE).exists():
 
 
 def calculate_box_row_pos(count: int) -> str:
-    # floor value of division, then + 1 because PC boxes arn't 0-index
+    # floor value of division, then + 1 because PC boxes aren't 0-index
     box = count // 30 + STARTING_PC_BOX
     # Find position inside box
     _box_index = count % 30
