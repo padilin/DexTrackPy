@@ -134,32 +134,6 @@ def _get_specific_form(serebii_soup, search_string) -> List[str] | None:
     return None
 
 
-# def _get_specific_form(serebii_soup, search_string) -> List[str] | None:
-#     # tbody <- alt_form_header.parent.parent
-#     #     tr <- alt_form_header.parent
-#     #         td "Alternate Forms" or "Gender Forms" <- alt_form_header
-#     #     tr
-#     #         td
-#     #             table
-#     #                 tbody <- alt_form_row.parent.parent
-#     #                     tr <- alt_form_row.parent, this row contains all the forms
-#     #                         td class pkmn <- alt_form_row / alt_form_header.parent.parent.find(td, class pkmn)
-#     #                     tr <- second row
-#
-#     # searches for header
-#     if alt_form_header := serebii_soup.find(
-#         "td", class_="fooevo", string=search_string
-#     ):
-#         # first .parent is the row, second .parent is the table
-#         alt_form_table = alt_form_header.parent.parent
-#         if alt_form_table:
-#             # TODO: Support multi line Altername Forms, such as Vivillion
-#             alt_form_row = alt_form_table.find("td", class_="pkmn").parent
-#             if alt_form_row:
-#                 return [form.b.text for form in alt_form_row]
-#     return None
-
-
 def get_url(url: str) -> httpx.Response:
     with httpx.Client(
         event_hooks={"request": [_log_request], "response": [_log_response]}
@@ -303,7 +277,8 @@ def _generate_form_img(form, pkmn):
         logger.debug(
             f"Filtering forms: {[x[1] for x in pkmn['Form_to_Img'] if x[0] == form.split('+')[1]]} with form {form}"
         )
-        return [x[1] for x in pkmn["Form_to_Img"] if x[0] == form.split("+")[1]][0]
+        logger.debug(f"Form to Img: {pkmn['Form_to_Img']}")
+        return [x[1].split('/')[-1] for x in pkmn["Form_to_Img"] if x[0] == form.split("+")[1]][0]
 
 
 def generate_data(data_file: str | Path):
@@ -422,3 +397,7 @@ def generate_images(data_file: str | Path, img_file: str | Path):
                     image_file_pillow.save(sprite_file_path)
                 else:
                     Path(f"{sprite_file_path}.err").touch(exist_ok=True)
+
+
+generate_data("data\\dex_with_img.json")
+generate_images("data\\dex_with_img.json", "images")
