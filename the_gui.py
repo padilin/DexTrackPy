@@ -184,7 +184,8 @@ def make_window2():
             for pos_no in pos_nos:
                 if found_pkmn := [(x[0], x[1], x[5]) for x in pkmn_name_location if x[2] == box_no and x[3] == row_no and x[4] == pos_no]:
                     pkmn_name, img_path_suffix, form_name = found_pkmn[0]
-                    image_row_contents.append(sg.Image(convert_to_bytes(f"images\\sprite\\{img_path_suffix}")))
+                    # image_row_contents.append(sg.Image(convert_to_bytes(f"images\\sprite\\{img_path_suffix}")))
+                    image_row_contents.append(sg.Button("", image_data=convert_to_bytes(f"images\\sprite\\{img_path_suffix}"), key=img_path_suffix, button_color=(sg.theme_background_color(), sg.theme_background_color()), border_width=0))
                     header_row_contents.append(sg.Text(f"{pkmn_name}", justification="c", size=(longest_name, None)))
                     form_row_contents.append(sg.Text(f"{form_name}", justification="c", size=(longest_name, None)))
                     image_row_contents.append(sg.Push())
@@ -199,39 +200,59 @@ def make_window2():
     return sg.Window("Boxes", [[sg.TabGroup([tab_group_contents])]], finalize=True)
 
 
-window1, window2 = make_window1(), make_window2()
+def make_info_window():
+    return sg.Window("Pokemon Image", [[sg.Exit()]], grab_anywhere=True, no_titlebar=True, finalize=True)
 
 
-while True:
-    # Check for events. Will fire off a __TIMEOUT__ every TIMEOUT milliseconds if no events happen
-    window, event, values = sg.read_all_windows(timeout=10000)
-    logger.debug(f"GUI > event {event} with {values}")
-    if event == "-BOXOFFSET-":
-        if window == window1:
-            STARTING_PC_BOX = values["-BOXOFFSET-"]
-            for count in range(len(pkmn_dex)):
-                box, row, pos = calculate_box_row_pos(count)
-                window1[f"-POSITION-{count}-"].update(value=f"Box {box:02}, Row {row:02}, Position {pos:02}")
-            window1.refresh()
-    elif event == "Save" and window == window1:
-        settings = {}
-        for k, v in values.items():
-            if k == "-BOXOFFSET-":
-                settings[k] = v
-            if isinstance(k, int):
-                pkmn_dex[k]["Complete"] = v
-        with open(JSON_FILE, "w", encoding="windows-1252") as pkmn_json:
-            json.dump(pkmn_dex, pkmn_json, indent=2)
-        with open(SETTINGS_FILE, "w") as settings_json:
-            json.dump(settings, settings_json, indent=2)
-    elif event == sg.WIN_CLOSED or event == "Exit":
-        break
-    if True:
-        window1["-PROGRESS-"].update(len([x for x in pkmn_dex if x["Complete"]]))
-        window1["-PROGRESS-TEXT-"].update(
-            f"{len([x for x in pkmn_dex if x['Complete']])}/{len(pkmn_dex)}"
-        )
-        window2.refresh()
+def main():
+    window1, window2, info_window = make_window1(), make_window2(), None
 
-window1.close()
-window2.close()
+    try:
+        while True:
+        # Check for events. Will fire off a __TIMEOUT__ every TIMEOUT milliseconds if no events happen
+            window, event, values = sg.read_all_windows(timeout=10000)
+            logger.debug(f"GUI > windows {window} event {event} with {values}")
+            if event == "-BOXOFFSET-":
+                if window == window1:
+                    STARTING_PC_BOX = values["-BOXOFFSET-"]
+                    for count in range(len(pkmn_dex)):
+                        box, row, pos = calculate_box_row_pos(count)
+                        window1[f"-POSITION-{count}-"].update(value=f"Box {box:02}, Row {row:02}, Position {pos:02}")
+                    window1.refresh()
+            elif event == "Save" and window == window1:
+                settings = {}
+                for k, v in values.items():
+                    if k == "-BOXOFFSET-":
+                        settings[k] = v
+                    if isinstance(k, int):
+                        pkmn_dex[k]["Complete"] = v
+                with open(JSON_FILE, "w", encoding="windows-1252") as pkmn_json:
+                    json.dump(pkmn_dex, pkmn_json, indent=2)
+                with open(SETTINGS_FILE, "w") as settings_json:
+                    json.dump(settings, settings_json, indent=2)
+            elif (window == window1 or window == window2) and (event == sg.WIN_CLOSED or event == "Exit"):
+                break
+            elif window == window2 and ".png" in event:
+                image_suffix = event
+                pkmn_info_layout = [[sg.Push(), sg.Image(convert_to_bytes(f"images\\normal\\{image_suffix}")), sg.Push()], [sg.Push(), sg.Text("Normal image", justification="c"),sg.Push()], [sg.Push(), sg.Image(convert_to_bytes(f"images\\shiny\\{image_suffix}")), sg.Push()], [sg.Push(), sg.Text("Shiny image", justification="c"), sg.Push()], [sg.Push(), sg.Exit(), sg.Push()]]
+                logger.info(f"Displaying Pokemon image {image_suffix}")
+                info_window = sg.Window("Pokemon Image", pkmn_info_layout, grab_anywhere=True, no_titlebar=True, finalize=True)
+            elif window == info_window and event == "Exit":
+                info_window.close()
+            if True:
+                window1["-PROGRESS-"].update(len([x for x in pkmn_dex if x["Complete"]]))
+                window1["-PROGRESS-TEXT-"].update(
+                    f"{len([x for x in pkmn_dex if x['Complete']])}/{len(pkmn_dex)}"
+                )
+                window2.refresh()
+    except Exception as e:
+        sg.Print("Exception in the program: ", sg.__file__, e, keep_on_top=True, wait=True)
+
+    window1.close()
+    window2.close()
+    if info_window is not None:
+        info_window.close()
+
+
+if __name__ == "__main__":
+    main()
