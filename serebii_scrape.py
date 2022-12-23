@@ -397,7 +397,3 @@ def generate_images(data_file: str | Path, img_file: str | Path):
                     image_file_pillow.save(sprite_file_path)
                 else:
                     Path(f"{sprite_file_path}.err").touch(exist_ok=True)
-
-
-generate_data("data\\dex_with_img.json")
-generate_images("data\\dex_with_img.json", "images")
