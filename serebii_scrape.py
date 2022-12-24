@@ -55,7 +55,9 @@ class PkmnEntry:
     complete: bool = False
     # types: None = None
 
-    gender_models: List[Literal["Uniform", "Male", "Female"]] = field(default_factory=list)
+    gender_models: List[Literal["Uniform", "Male", "Female"]] = field(
+        default_factory=list
+    )
     form_models: List[str] = field(default_factory=list)
 
     unique_model_images: List[FormTuple] = field(default_factory=list)
@@ -99,7 +101,11 @@ class PkmnEntry:
         return self.__repr__()
 
     def __repr__(self):
-        return f"{self.name} / Japan: {self.japanese} / French: {self.french} / German: {self.german} / Korean: {self.korean} | N #{self.ndex} | P #{self.pdex} | Male: {self.male}% Female: {self.female}% | Models: Gender {self.gender_models} Form {self.form_models} Unique {self.unique_model_images}"
+        return (
+            f"{self.name} / Japan: {self.japanese} / French: {self.french} / German: {self.german} / "
+            f"Korean: {self.korean} | N #{self.ndex} | P #{self.pdex} | Male: {self.male}% Female: {self.female}% "
+            f"| Models: Gender {self.gender_models} Form {self.form_models} Unique {self.unique_model_images}"
+        )
 
 
 class FormTuple:
@@ -139,7 +145,6 @@ def get_name_no_gender_from_serebii(pkmn_entry, pkmn_soup):
         #   index + 3 = "Japan:" <- Match this, set pkmn_entry.japanese to next index
         #   index + 4 = "ニャオハ" <- Skip because it was set last item
         name = item.text
-        # logger.debug(f"get_name_no_gender_from_serebii() found {item.text}")
         if type(name) == str:
             if name.startswith("Paldea:"):
                 pkmn_entry.pdex = int(data[idx + 1].text.replace("#", ""))
@@ -218,20 +223,33 @@ def _get_specific_form(serebii_soup, search_string) -> List[str] | None:
 
 def get_form_images_name(pkmn_entry, pkmn_soup):
     logger.debug(f"Pkmn entry till now: {pkmn_entry}")
-    # All images are saved as f"{national dex number}{'-' if not 'Uniform' or 'Male'}{single letter to describe form}.png"
+    # All images are saved as f"{national dex number}{'-' if not 'Uniform' or 'Male'}{single letter to describe
+    # form}.png"
     for model in pkmn_entry.get_unique_models():
+        if (pkmn_entry.name, model) in UNAVAILABLE_IN_SV:
+            logger.info(f"Skipping {pkmn_entry.name} {form}")
+            continue
         # First check if it is an alt form, which has a Gender|Form layout
         if "|" in model:
             form = model.split("|")[1]
             logger.debug(f"Alt form found: {form}")
             # Search html for an img with an alt text of the form
             form_image = pkmn_soup.find("img", attrs={"alt": form})
-            if form_image is not None and (pkmn_entry.name, form) not in UNAVAILABLE_IN_SV:
-                pkmn_entry.unique_model_images.append(FormTuple(model, f"{form_image['src'].split('/')[-1]:03}"))
+            if (
+                form_image is not None
+                and (pkmn_entry.name, form) not in UNAVAILABLE_IN_SV
+            ):
+                pkmn_entry.unique_model_images.append(
+                    FormTuple(model, f"{form_image['src'].split('/')[-1]:03}")
+                )
         elif model in ("Uniform", "Male"):
-            pkmn_entry.unique_model_images.append(FormTuple(model, f"{pkmn_entry.ndex}.png"))
+            pkmn_entry.unique_model_images.append(
+                FormTuple(model, f"{pkmn_entry.ndex}.png")
+            )
         elif model == "Female":
-            pkmn_entry.unique_model_images.append(FormTuple(model, f"{pkmn_entry.ndex}-f.png"))
+            pkmn_entry.unique_model_images.append(
+                FormTuple(model, f"{pkmn_entry.ndex}-f.png")
+            )
         else:
             logger.debug(f"get_form_images_name model didn't match a pattern: {model}")
 
@@ -241,7 +259,9 @@ def load_dex(dex_file: str | Path) -> List[PkmnEntry]:
         with open(dex_file, "r", encoding="windows-1252") as dex_json:
             list_of_json = json.load(dex_json)
             for pkmn in list_of_json:
-                pkmn["unique_model_images"] = [FormTuple(x[0], x[1]) for x in pkmn["unique_model_images"]]
+                pkmn["unique_model_images"] = [
+                    FormTuple(x[0], x[1]) for x in pkmn["unique_model_images"]
+                ]
             return [PkmnEntry(**x) for x in list_of_json]
     else:
         return []
@@ -362,7 +382,10 @@ TO_ADD = [
         "korean": "피카츄",
         "gender_models": ["Male", "Female"],
         "form_models": [],
-        "unique_model_images": [FormTuple("Male", "025.png"), FormTuple("Female", "025-f.png")],
+        "unique_model_images": [
+            FormTuple("Male", "025.png"),
+            FormTuple("Female", "025-f.png"),
+        ],
         "complete": False,
     },
     {
@@ -376,10 +399,18 @@ TO_ADD = [
         "german": "Tauros",
         "korean": "켄타로스",
         "gender_models": ["Uniform"],
-        "form_models": ["Paldean Form Combat Breed", "Paldean Form Blaze Breed", "Paldean Form Aqua Breed"],
-        "unique_model_images": [FormTuple("Uniform|Paldean Form Combat Breed", "128-p.png"), FormTuple("Uniform|Paldean Form Blaze Breed", "128-b.png"), FormTuple("Uniform|Paldean Form Aqua Breed", "128-a.png")],
+        "form_models": [
+            "Paldean Form Combat Breed",
+            "Paldean Form Blaze Breed",
+            "Paldean Form Aqua Breed",
+        ],
+        "unique_model_images": [
+            FormTuple("Uniform|Paldean Form Combat Breed", "128-p.png"),
+            FormTuple("Uniform|Paldean Form Blaze Breed", "128-b.png"),
+            FormTuple("Uniform|Paldean Form Aqua Breed", "128-a.png"),
+        ],
         "complete": False,
-    }
+    },
 ]
 
 
@@ -397,7 +428,7 @@ def generate_data(data_file: str | Path):
         dex = load_dex(data_file)
         if pkmn is None:
             logger.info("Pokemon is filtered out.")
-        elif pkmn.pdex not in [x.pdex for x in dex]:
+        elif pkmn.ndex not in [x.ndex for x in dex]:
             logger.debug(f"Pkmn pre-save {pkmn}")
             logger.info(f"Found new pokemon {pkmn.name} #{pkmn.pdex}")
             dex.append(pkmn)
@@ -409,7 +440,7 @@ def generate_data(data_file: str | Path):
     changed = False
     for manual_added in TO_ADD:
         pkmn = PkmnEntry(**manual_added)
-        if pkmn not in dex:
+        if pkmn.ndex not in [x.ndex for x in dex]:
             changed = True
             logger.info(f"Loading Manual pokemon {pkmn.name} # {pkmn.pdex}")
             dex.append(pkmn)
@@ -475,6 +506,6 @@ def generate_images(data_file: str | Path, img_file: str | Path):
                     Path(f"{sprite_file_path}.err").touch(exist_ok=True)
 
 
-# generate_data("data\\delete_me.json")
-# test_dex = load_dex("data\\delete_me.json")
-# logger.debug(f"{test_dex[0]}")
+generate_data("data\\delete_me.json")
+test_dex = load_dex("data\\delete_me.json")
+logger.debug(f"{test_dex[0]}")
