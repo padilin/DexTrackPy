@@ -506,6 +506,6 @@ def generate_images(data_file: str | Path, img_file: str | Path):
                     Path(f"{sprite_file_path}.err").touch(exist_ok=True)
 
 
-generate_data("data\\delete_me.json")
-test_dex = load_dex("data\\delete_me.json")
-logger.debug(f"{test_dex[0]}")
+# generate_data("data\\delete_me.json")
+# test_dex = load_dex("data\\delete_me.json")
+# logger.debug(f"{test_dex[0]}")

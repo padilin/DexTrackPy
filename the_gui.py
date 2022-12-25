@@ -11,7 +11,8 @@ from loguru import logger
 from serebii_scrape import generate_data
 
 
-JSON_FILE = "data/dex_with_img.json"
+# JSON_FILE = "data/dex_with_img.json"
+JSON_FILE = "data/delete_me.json"
 if not Path(JSON_FILE).exists():
     with open(JSON_FILE, "w", encoding="windows-1252") as pkmn_json:
         json.dump([], pkmn_json, indent=2)
@@ -165,7 +166,7 @@ def make_window2():
         if len(pkmn["Name"]) > 0:
             longest_name = len(pkmn["Name"])
         box, row, pos = calculate_box_row_pos(count)
-        pkmn_name_location.append((pkmn["Name"], pkmn["Form_Image"], box, row, pos, pkmn["Form"]))
+        pkmn_name_location.append((pkmn["Name"], pkmn["Form_Image"], box, row, pos, pkmn["Form"], pkmn["Complete"]))
     # Get important information to creating boxes
     first_box_no = min([x[2] for x in pkmn_name_location])
     last_box_no = max([x[2] for x in pkmn_name_location])
@@ -182,10 +183,13 @@ def make_window2():
             image_row_contents = [sg.Push()]
             form_row_contents = [sg.Push()]
             for pos_no in pos_nos:
-                if found_pkmn := [(x[0], x[1], x[5]) for x in pkmn_name_location if x[2] == box_no and x[3] == row_no and x[4] == pos_no]:
-                    pkmn_name, img_path_suffix, form_name = found_pkmn[0]
+                if found_pkmn := [(x[0], x[1], x[5], x[6]) for x in pkmn_name_location if x[2] == box_no and x[3] == row_no and x[4] == pos_no]:
+                    pkmn_name, img_path_suffix, form_name, is_complete = found_pkmn[0]
+                    border = 0
+                    if is_complete:
+                        border = 4
                     # image_row_contents.append(sg.Image(convert_to_bytes(f"images\\sprite\\{img_path_suffix}")))
-                    image_row_contents.append(sg.Button("", image_data=convert_to_bytes(f"images\\sprite\\{img_path_suffix}"), key=img_path_suffix, button_color=(sg.theme_background_color(), sg.theme_background_color()), border_width=0))
+                    image_row_contents.append(sg.Button("", image_data=convert_to_bytes(f"images\\sprite\\{img_path_suffix}"), key=img_path_suffix, button_color=(sg.theme_text_color(), sg.theme_background_color()), border_width=border))
                     header_row_contents.append(sg.Text(f"{pkmn_name}", justification="c", size=(longest_name, None)))
                     form_row_contents.append(sg.Text(f"{form_name}", justification="c", size=(longest_name, None)))
                     image_row_contents.append(sg.Push())
