@@ -108,10 +108,27 @@ class PkmnEntry:
         )
 
 
+def _convert_to_at_least_3_digit(img_name: str) -> str:
+    """Sometimes Serebii alt text has the wrong, less than 3 digit, number"""
+    pulled_apart = []
+    if "-" in img_name:
+        # Form image, so it has NNN-F.png
+        pulled_apart = img_name.split("-")
+    else:
+        pulled_apart = img_name.split(".")
+    # 91.png = ["91", "png"] or 25-f.png = ["25", "f.png"]
+    if len(pulled_apart[0]) < 3:
+        # Z-fill works perfect.
+        # "3".zfill(3) = "003", "40".zfill(3) = "040", "500".zfill(3) = "500", "1000".zfill(3) = "1000"
+        return img_name.replace(pulled_apart[0], pulled_apart[0].zfill(3))
+    else:
+        return img_name
+
+
 class FormTuple:
     def __init__(self, form_name: str, img_name: str):
         self.form_name = form_name
-        self.img_name = img_name
+        self.img_name = _convert_to_at_least_3_digit(img_name)
 
     def __str__(self):
         return self.__repr__()
@@ -240,7 +257,7 @@ def get_form_images_name(pkmn_entry, pkmn_soup):
                 and (pkmn_entry.name, form) not in UNAVAILABLE_IN_SV
             ):
                 pkmn_entry.unique_model_images.append(
-                    FormTuple(model, f"{form_image['src'].split('/')[-1]:03}")
+                    FormTuple(model, f"{form_image['src'].split('/')[-1]}")
                 )
         elif model in ("Uniform", "Male"):
             pkmn_entry.unique_model_images.append(
@@ -252,6 +269,39 @@ def get_form_images_name(pkmn_entry, pkmn_soup):
             )
         else:
             logger.debug(f"get_form_images_name model didn't match a pattern: {model}")
+
+
+def download_image(url: str, path: str | Path) -> Path:
+    logger.info(f"Processing {url} -> {path}")
+    if type(path) == str:
+        path = Path(path)
+    path_err = path.with_suffix(".err")
+    if not path.exists():
+        image = get_url(url)
+        if image:
+            image_file_pillow = Image.open(BytesIO(image.content))
+            image_file_pillow.save(path)
+            logger.info(f"Found image {path}")
+            return path
+        else:
+            # Since we are going to change the url and try again, use url here
+            error_image = url.split("/")[-1]
+            # Check if this is a form
+            if "-" in error_image:
+                logger.warning(f"Did not find {error_image}, trying base form")
+                # Grab base image name without -{form}.png, then add .png
+                base_image = f"{error_image.split('-')[0]}.png"
+                base_form_url = url.replace(error_image, base_image)
+                # Try again with {national dex number}.png
+                # There is no loop because we strip the form and this block gets skipped without an - in the name
+                return download_image(base_form_url, path)
+            else:
+                path_err.touch(exist_ok=True)
+                logger.error(f"Unable to find {url}, created error file {path_err}")
+                return path_err
+    else:
+        logger.info(f"File {path} exists already")
+        return path
 
 
 def load_dex(dex_file: str | Path) -> List[PkmnEntry]:
@@ -429,7 +479,6 @@ def generate_data(data_file: str | Path):
         if pkmn is None:
             logger.info("Pokemon is filtered out.")
         elif pkmn.ndex not in [x.ndex for x in dex]:
-            logger.debug(f"Pkmn pre-save {pkmn}")
             logger.info(f"Found new pokemon {pkmn.name} #{pkmn.pdex}")
             dex.append(pkmn)
             save_dex(data_file, dex)
@@ -449,63 +498,25 @@ def generate_data(data_file: str | Path):
 
 
 def generate_images(data_file: str | Path, img_file: str | Path):
-    pkmn_list = []
-    with open(data_file, "r", encoding="windows-1252") as pkmn_json:
-        pkmn_list = json.load(pkmn_json)
+    pkmn_dex = load_dex(data_file)
     logger.debug(f"Starting image checking and downloading.")
-    for pkmn in pkmn_list:
-        image_file_suffix = pkmn["Form_Image"]
+    for entry in pkmn_dex:
+        for form in entry.unique_model_images:
+            image_file_url = f"https://serebii.net/scarletviolet/pokemon/new/{form.img_name}"
+            shiny_file_url = f"https://www.serebii.net/Shiny/SV/new/{form.img_name}"
+            sprite_file_url = f"https://serebii.net/pokedex-sv/icon/new/{form.img_name}"
 
-        image_file_url = (
-            f"https://serebii.net/scarletviolet/pokemon/new/{image_file_suffix}"
-        )
-        image_file_path = f"{img_file}\\normal\\{image_file_suffix}"
-        if (
-            not Path(image_file_path).exists()
-            and not Path(f"{image_file_path}.err").exists()
-        ):
-            logger.debug(f"{pkmn['Name']} checking image")
-            image_file_content = get_url(image_file_url)
-            if image_file_content:
-                image_file_pillow = Image.open(BytesIO(image_file_content.content))
-                image_file_pillow.save(image_file_path)
-            else:
-                Path(f"{image_file_path}.err").touch(exist_ok=True)
-        else:
-            logger.debug(f"Image exists {pkmn['Name']} at {image_file_path}")
+            image_file_path = f"{img_file}\\sprite\\{form.img_name}"
+            shiny_file_path = f"{img_file}\\sprite\\{form.img_name}"
+            sprite_file_path = f"{img_file}\\sprite\\{form.img_name}"
 
-        shiny_file_url = f"https://www.serebii.net/Shiny/SV/new/{image_file_suffix}"
-        shiny_file_path = f"{img_file}\\shiny\\{image_file_suffix}"
-        if (
-            not Path(shiny_file_path).exists()
-            and not Path(f"{shiny_file_path}.err").exists()
-        ):
-            shiny_file_content = get_url(shiny_file_url)
-            if shiny_file_content:
-                image_file_pillow = Image.open(BytesIO(shiny_file_content.content))
-                image_file_pillow.save(shiny_file_path)
-            else:
-                Path(f"{shiny_file_path}.err").touch(exist_ok=True)
-
-        sprite_file_url = f"https://serebii.net/pokedex-sv/icon/new/{image_file_suffix}"
-        sprite_file_path = f"{img_file}\\sprite\\{image_file_suffix}"
-        if (
-            not Path(sprite_file_path).exists()
-            and not Path(f"{sprite_file_path}.err").exists()
-        ):
-            sprite_file_content = get_url(sprite_file_url)
-            if sprite_file_content:
-                image_file_pillow = Image.open(BytesIO(sprite_file_content.content))
-                image_file_pillow.save(sprite_file_path)
-            else:
-                sprite_file_content = get_url(sprite_file_url.replace("-f", ""))
-                if sprite_file_content:
-                    image_file_pillow = Image.open(BytesIO(sprite_file_content.content))
-                    image_file_pillow.save(sprite_file_path)
-                else:
-                    Path(f"{sprite_file_path}.err").touch(exist_ok=True)
+            download_image(image_file_url, image_file_path)
+            download_image(shiny_file_url, shiny_file_path)
+            download_image(sprite_file_url, sprite_file_path)
 
 
-# generate_data("data\\delete_me.json")
-# test_dex = load_dex("data\\delete_me.json")
+# generate_data("data\\dex_v3.json")
+# test_dex = load_dex("data\\dex_v3.json")
 # logger.debug(f"{test_dex[0]}")
+#
+# generate_images("data\\dex_v3.json", "images")
