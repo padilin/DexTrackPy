@@ -79,7 +79,9 @@ class PkmnEntry:
     def asdict(self):
         unique_model_images_list = []
         for unique in self.unique_model_images:
-            unique_model_images_list.append((unique.form_name, unique.img_name))
+            unique_model_images_list.append(
+                (unique.form_name, unique.img_name, unique.complete)
+            )
         return {
             "name": self.name,
             "pdex": self.pdex,
@@ -126,15 +128,16 @@ def _convert_to_at_least_3_digit(img_name: str) -> str:
 
 
 class FormTuple:
-    def __init__(self, form_name: str, img_name: str):
+    def __init__(self, form_name: str, img_name: str, complete: bool = False):
         self.form_name = form_name
         self.img_name = _convert_to_at_least_3_digit(img_name)
+        self.complete = complete
 
     def __str__(self):
         return self.__repr__()
 
     def __repr__(self):
-        return f"{self.form_name} image file {self.img_name}"
+        return f"{self.form_name} image file {self.img_name} caught? {self.complete}"
 
 
 def get_name_no_gender_from_serebii(pkmn_entry, pkmn_soup):
@@ -310,7 +313,7 @@ def load_dex(dex_file: str | Path) -> List[PkmnEntry]:
             list_of_json = json.load(dex_json)
             for pkmn in list_of_json:
                 pkmn["unique_model_images"] = [
-                    FormTuple(x[0], x[1]) for x in pkmn["unique_model_images"]
+                    FormTuple(x[0], x[1], x[2]) for x in pkmn["unique_model_images"]
                 ]
             return [PkmnEntry(**x) for x in list_of_json]
     else:
@@ -320,6 +323,7 @@ def load_dex(dex_file: str | Path) -> List[PkmnEntry]:
 def save_dex(dex_file: str | Path, dex: List[PkmnEntry]) -> None:
     with open(dex_file, "w", encoding="windows-1252") as dex_json:
         logger.debug("Saving json")
+        dex = sorted(dex, key=lambda d: d.pdex)
         json.dump([x.asdict() for x in dex if x is not None], dex_json, indent=2)
 
 
@@ -502,21 +506,40 @@ def generate_images(data_file: str | Path, img_file: str | Path):
     logger.debug(f"Starting image checking and downloading.")
     for entry in pkmn_dex:
         for form in entry.unique_model_images:
-            image_file_url = f"https://serebii.net/scarletviolet/pokemon/new/{form.img_name}"
+            image_file_url = (
+                f"https://serebii.net/scarletviolet/pokemon/new/{form.img_name}"
+            )
             shiny_file_url = f"https://www.serebii.net/Shiny/SV/new/{form.img_name}"
             sprite_file_url = f"https://serebii.net/pokedex-sv/icon/new/{form.img_name}"
 
-            image_file_path = f"{img_file}\\sprite\\{form.img_name}"
-            shiny_file_path = f"{img_file}\\sprite\\{form.img_name}"
+            image_file_path = f"{img_file}\\normal\\{form.img_name}"
+            shiny_file_path = f"{img_file}\\shiny\\{form.img_name}"
             sprite_file_path = f"{img_file}\\sprite\\{form.img_name}"
 
             download_image(image_file_url, image_file_path)
             download_image(shiny_file_url, shiny_file_path)
             download_image(sprite_file_url, sprite_file_path)
 
+    image_blank_file = Path(f"{img_file}\\normal\\blank.png")
+    shiny_blank_file = Path(f"{img_file}\\shiny\\blank.png")
+    sprite_blank_file = Path(f"{img_file}\\sprite\\blank.png")
 
-# generate_data("data\\dex_v3.json")
-# test_dex = load_dex("data\\dex_v3.json")
+    regular_size_file_blank = Image.new("RGBA", (250, 250), (0, 0, 0, 0))
+    if not image_blank_file.exists():
+        logger.info("Writing blank normal image")
+        regular_size_file_blank.save(image_blank_file)
+    if not shiny_blank_file.exists():
+        logger.info("Writing blank shiny image")
+        regular_size_file_blank.save(shiny_blank_file)
+
+    sprite_file_blank = Image.new("RGBA", (40, 40), (0, 0, 0, 0))
+    if not sprite_blank_file.exists():
+        logger.info("Writing blank sprite image")
+        sprite_file_blank.save(sprite_blank_file)
+
+
+# generate_data("data\\dex_v3.1.json")
+# test_dex = load_dex("data\\dex_v3.1.json")
 # logger.debug(f"{test_dex[0]}")
 #
-# generate_images("data\\dex_v3.json", "images")
+# generate_images("data\\dex_v3.1.json", "images")
