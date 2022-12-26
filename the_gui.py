@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import io
 import json
-import xml.sax.saxutils
 from pathlib import Path
 from typing import Tuple, List
 
@@ -290,11 +289,21 @@ def make_window2():
     #     box, row, pos = calculate_box_row_pos(count)
     #     pkmn_name_location.append((pkmn.name, pkmn["Form_Image"], box, row, pos, pkmn["Form"], pkmn.complete))
     # Get important information to creating boxes
+    box_nos, pos_nos, row_nos = generate_box_stats()
+    boxes_layout = [[sg.TabGroup(generate_all_boxes(box_nos, pos_nos, row_nos), key="-BOXES-")]]
+    return sg.Window("Boxes", boxes_layout, finalize=True)
+
+
+def generate_box_stats():
     first_box_no = min([x.box for x in record_pkmn])
     last_box_no = max([x.box for x in record_pkmn])
     box_nos = range(first_box_no, last_box_no + 1)
     row_nos = range(1, 5 + 1)
     pos_nos = range(1, 6 + 1)
+    return box_nos, pos_nos, row_nos
+
+
+def generate_all_boxes(box_nos, pos_nos, row_nos):
     tab_group_contents = []
     # Each box is a sg.Tab("Box {No}", [list of 15 lists. 5 name, 5 form names, and 5 image each])
     for box_no in box_nos:
@@ -317,13 +326,28 @@ def make_window2():
             tab_group_contents.append(
                 sg.Tab(f"Box {box_no:02}", tab_contents, element_justification="c")
             )
-    return sg.Window("Boxes", [[sg.TabGroup([tab_group_contents])]], finalize=True)
+    return [tab_group_contents]
 
 
 def make_info_window():
+    info_layout = [
+        [
+            sg.Push(),
+            sg.Image(convert_to_bytes(f"images\\normal\\blank.png"), key="-NORMAL-DETAIL-"),
+            sg.Push(),
+        ],
+        [sg.Push(), sg.Text("Normal image", justification="c"), sg.Push()],
+        [
+            sg.Push(),
+            sg.Image(convert_to_bytes(f"images\\shiny\\blank.png"), key="-SHINY-DETAIL-"),
+            sg.Push(),
+        ],
+        [sg.Push(), sg.Text("Shiny image", justification="c"), sg.Push()],
+        [sg.Push(), sg.Button("Exit", enable_events=True, key="-CLOSE-DETAIL-"), sg.Push()],
+    ]
     return sg.Window(
         "Pokemon Image",
-        [[sg.Exit()]],
+        info_layout,
         grab_anywhere=True,
         no_titlebar=True,
         finalize=True,
@@ -331,7 +355,9 @@ def make_info_window():
 
 
 def main():
-    window1, window2, info_window = make_window1(), make_window2(), None
+    window1, window2, info_window = make_window1(), make_window2(), make_info_window()
+
+    info_window.disappear()
 
     progress, maximum = generate_complete_progress()
     window1["-PROGRESS-"].update(f"{progress}")
@@ -344,12 +370,16 @@ def main():
             window, event, values = sg.read_all_windows(timeout=10000)
             logger.debug(f"GUI > windows {window} event {event} with {values}")
             if event == "-BOXOFFSET-":
-                if window == window1:
-                    STARTING_PC_BOX = values["-BOXOFFSET-"]
-                    for pkmn in record_pkmn:
-                        pkmn.update_box_row_pos()
-                        window1[pkmn.key].update(pkmn.box_location_text)
-                    window1.refresh()
+                STARTING_PC_BOX = values["-BOXOFFSET-"]
+                for pkmn in record_pkmn:
+                    pkmn.update_box_row_pos()
+                    window1[pkmn.key].update(pkmn.box_location_text)
+                window1.refresh()
+
+                group_of_boxes = window2.find_element("-BOXES-")
+                box_nos, pos_nos, row_nos = generate_box_stats()
+                group_of_boxes.update(generate_all_boxes(box_nos, pos_nos, row_nos))
+                window2.refresh()
             elif event == "Save":
                 save_everything(values)
             elif event in [f"-CAUGHT-{x.count}" for x in record_pkmn]:
@@ -358,31 +388,11 @@ def main():
                 event == sg.WIN_CLOSED or event == "Exit"
             ):
                 break
+            elif event == "-CLOSE-DETAIL-":
+                info_window.disappear()
             elif window == window2 and ".png" in event:
                 image_suffix = event
-                pkmn_info_layout = [
-                    [
-                        sg.Push(),
-                        sg.Image(convert_to_bytes(f"images\\normal\\{image_suffix}")),
-                        sg.Push(),
-                    ],
-                    [sg.Push(), sg.Text("Normal image", justification="c"), sg.Push()],
-                    [
-                        sg.Push(),
-                        sg.Image(convert_to_bytes(f"images\\shiny\\{image_suffix}")),
-                        sg.Push(),
-                    ],
-                    [sg.Push(), sg.Text("Shiny image", justification="c"), sg.Push()],
-                    [sg.Push(), sg.Exit(), sg.Push()],
-                ]
-                logger.info(f"Displaying Pokemon image {image_suffix}")
-                info_window = sg.Window(
-                    "Pokemon Image",
-                    pkmn_info_layout,
-                    grab_anywhere=True,
-                    no_titlebar=True,
-                    finalize=True,
-                )
+                update_info_window(image_suffix, info_window)
             elif window == info_window and event == "Exit":
                 info_window.close()
             if True:
@@ -397,8 +407,17 @@ def main():
 
     window1.close()
     window2.close()
-    if info_window is not None:
-        info_window.close()
+    info_window.close()
+
+
+def update_info_window(image_suffix, info_window):
+    image_info = info_window.find_element("-NORMAL-DETAIL-")
+    image_info.update(convert_to_bytes(f"images\\normal\\{image_suffix}"))
+    shiny_info = info_window.find_element("-SHINY-DETAIL-")
+    shiny_info.update(convert_to_bytes(f"images\\shiny\\{image_suffix}"))
+    info_window.reappear()
+    info_window.refresh()
+    info_window.force_focus()
 
 
 def save_everything(values):
