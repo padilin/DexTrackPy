@@ -4,20 +4,25 @@ import base64
 import io
 import json
 from pathlib import Path
-from typing import Tuple, List
+from typing import List, Tuple
 
 import PIL.Image
 import PySimpleGUI as sg
 from loguru import logger
 
-from serebii_scrape import generate_data, generate_images, load_dex, PkmnEntry, save_dex
-
+from pysvscrape.serebii_scrape import (
+    PkmnEntry,
+    generate_data,
+    generate_images,
+    load_dex,
+    save_dex,
+)
 
 # JSON_FILE = "data/dex_with_img.json"
 JSON_FILE = "data/dex_v3.1.json"
 IMAGE_FOLDER = "images"
-# generate_data(JSON_FILE)
-# generate_images(JSON_FILE, IMAGE_FOLDER)
+generate_data(JSON_FILE)
+generate_images(JSON_FILE, IMAGE_FOLDER)
 pkmn_dex = load_dex(JSON_FILE)
 
 sg.theme("Dark Green 7")
@@ -29,10 +34,10 @@ STARTING_PC_BOX = 1
 
 
 def load_settings(settings_file: str | Path):
-    if type(settings_file) == str:
-        settings_file = Path(settings_file)
-    if settings_file.exists():
-        with open(settings_file, "r") as settings_json:
+    # Fun fact, Path(Path()) works the same as Path(str), and it makes mypy pass
+    settings_path = Path(settings_file)
+    if settings_path.exists():
+        with open(settings_path) as settings_json:
             settings = json.load(settings_json)
             if "-BOXOFFSET-" in settings:
                 STARTING_PC_BOX = settings["-BOXOFFSET-"]
@@ -41,7 +46,7 @@ def load_settings(settings_file: str | Path):
 load_settings(SETTINGS_FILE)
 
 
-def calculate_box_row_pos(count: int) -> Tuple[int, int, int]:
+def calculate_box_row_pos(count: int) -> tuple[int, int, int]:
     # floor value of division, then + 1 because PC boxes aren't 0-index
     box = count // 30 + STARTING_PC_BOX
     # Find position inside box
@@ -90,10 +95,10 @@ class RecordedPkmnTuple:
         return f"{self.pkmn.pdex} / {self.pkmn.ndex} - {self.pkmn.name} - {self.form_name.replace('|', ' ')}"
 
 
-record_pkmn: List[RecordedPkmnTuple] = []
+record_pkmn: list[RecordedPkmnTuple] = []
 
 
-def generate_pkmn_layout() -> List[sg.Element]:
+def generate_pkmn_layout() -> list[sg.Element]:
     background_color = sg.DEFAULT_BACKGROUND_COLOR
     alt_background_color = "dark slate gray"
     pkmn_layout = []
@@ -158,13 +163,13 @@ def generate_pkmn_layout() -> List[sg.Element]:
     ]
 
 
-def generate_complete_progress() -> Tuple[int, int]:
+def generate_complete_progress() -> tuple[int, int]:
     return int(len([x for x in record_pkmn if x.form_complete])), int(len(record_pkmn))
 
 
 def generate_box_entry(
     box: int, row: int, pos: int
-) -> Tuple[List[sg.Element], List[sg.Element], List[sg.Element]]:
+) -> tuple[list[sg.Element], list[sg.Element], list[sg.Element]]:
     # Pull exact box, row, pos out of loaded in dex
     entry = [x for x in record_pkmn if x.box == box and x.row == row and x.pos == pos]
     if len(entry) < 1:
@@ -194,23 +199,23 @@ def generate_box_entry(
             [sg.VPush()],
             [sg.VPush()],
         )
-    entry = entry[0]
+    found_entry = entry[0]
     border = 0
-    if entry.form_complete:
+    if found_entry.form_complete:
         # Make completed forms stand out
         border = 4
     image = [
         sg.Button(
             "",
-            image_data=convert_to_bytes(f"images\\sprite\\{entry.form_img}"),
-            key=entry.form_img,
+            image_data=convert_to_bytes(f"images\\sprite\\{found_entry.form_img}"),
+            key=found_entry.form_img,
             button_color=(sg.theme_text_color(), sg.theme_background_color()),
             border_width=border,
         ),
         sg.Push(),
     ]
-    name = [sg.Text(f"{entry.pkmn.name}"), sg.Push()]
-    form = [sg.Text(f"{entry.form_name}"), sg.Push()]
+    name = [sg.Text(f"{found_entry.pkmn.name}"), sg.Push()]
+    form = [sg.Text(f"{found_entry.form_name}"), sg.Push()]
     return image, name, form
 
 
@@ -290,7 +295,9 @@ def make_window2():
     #     pkmn_name_location.append((pkmn.name, pkmn["Form_Image"], box, row, pos, pkmn["Form"], pkmn.complete))
     # Get important information to creating boxes
     box_nos, pos_nos, row_nos = generate_box_stats()
-    boxes_layout = [[sg.TabGroup(generate_all_boxes(box_nos, pos_nos, row_nos), key="-BOXES-")]]
+    boxes_layout = [
+        [sg.TabGroup(generate_all_boxes(box_nos, pos_nos, row_nos), key="-BOXES-")]
+    ]
     return sg.Window("Boxes", boxes_layout, finalize=True)
 
 
@@ -333,17 +340,25 @@ def make_info_window():
     info_layout = [
         [
             sg.Push(),
-            sg.Image(convert_to_bytes(f"images\\normal\\blank.png"), key="-NORMAL-DETAIL-"),
+            sg.Image(
+                convert_to_bytes(f"images\\normal\\blank.png"), key="-NORMAL-DETAIL-"
+            ),
             sg.Push(),
         ],
         [sg.Push(), sg.Text("Normal image", justification="c"), sg.Push()],
         [
             sg.Push(),
-            sg.Image(convert_to_bytes(f"images\\shiny\\blank.png"), key="-SHINY-DETAIL-"),
+            sg.Image(
+                convert_to_bytes(f"images\\shiny\\blank.png"), key="-SHINY-DETAIL-"
+            ),
             sg.Push(),
         ],
         [sg.Push(), sg.Text("Shiny image", justification="c"), sg.Push()],
-        [sg.Push(), sg.Button("Exit", enable_events=True, key="-CLOSE-DETAIL-"), sg.Push()],
+        [
+            sg.Push(),
+            sg.Button("Exit", enable_events=True, key="-CLOSE-DETAIL-"),
+            sg.Push(),
+        ],
     ]
     return sg.Window(
         "Pokemon Image",

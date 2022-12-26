@@ -9,26 +9,40 @@ from pathlib import Path
 from typing import List, Literal
 
 import httpx as httpx
-from PIL import Image
 from bs4 import BeautifulSoup
 from loguru import logger
+from PIL import Image
 
 
-def get_sv_pokedex() -> List[str]:
+def get_sv_pokedex() -> list[str]:
     pokedex_name = "Paldea Pokédex"
     response = get_url("https://www.serebii.net/pokedex-sv/")
-
-    dex_soup = BeautifulSoup(response.content.decode(response.encoding), "lxml")
-    raw_dex_list = dex_soup.find("option", string=pokedex_name).parent
-    return [
-        x["value"] for x in raw_dex_list.find_all("option") if x.text != pokedex_name
-    ]
+    dex_soup = None
+    # BS4 will return Tag, NavigableString, or None. Need to filter out the None for mypy
+    if response.encoding is not None:
+        dex_soup = BeautifulSoup(response.content.decode(response.encoding), "lxml")
+        if dex_soup is not None:
+            dex_list = dex_soup.find("option", string=pokedex_name)
+            if dex_list is not None:
+                dex_list_parent = dex_list.parent
+                if dex_list_parent is not None:
+                    return [
+                        x["value"]
+                        for x in dex_list_parent.find_all("option")
+                        if (x.text != pokedex_name) and (x is not None)
+                    ]
+    return []
 
 
 def get_pkmn_page(url: str):
     response = get_url(url)
     pkmn_entry = PkmnEntry()
-    pkmn_soup = BeautifulSoup(response.content.decode(response.encoding), "lxml")
+    # Encoding comes from serebii website
+    encoding = "windows-1252"
+    # Make sure there isn't a random page with different/undefined encoding. for mypy too
+    if response.encoding is not None:
+        encoding = response.encoding
+    pkmn_soup = BeautifulSoup(response.content.decode(encoding), "lxml")
 
     get_name_no_gender_from_serebii(pkmn_entry, pkmn_soup)
     get_forms_from_serebii(pkmn_entry, pkmn_soup)
@@ -55,12 +69,12 @@ class PkmnEntry:
     complete: bool = False
     # types: None = None
 
-    gender_models: List[Literal["Uniform", "Male", "Female"]] = field(
+    gender_models: list[Literal["Uniform", "Male", "Female"]] = field(
         default_factory=list
     )
-    form_models: List[str] = field(default_factory=list)
+    form_models: list[str] = field(default_factory=list)
 
-    unique_model_images: List[FormTuple] = field(default_factory=list)
+    unique_model_images: list[FormTuple] = field(default_factory=list)
 
     def get_unique_models(self):
         # There is always a gender model. Uniform, Male, or Female
@@ -202,7 +216,7 @@ def get_forms_from_serebii(pkmn_entry, pkmn_soup: BeautifulSoup):
     pkmn_entry.form_models = alt_forms
 
 
-def _get_specific_form(serebii_soup, search_string) -> List[str] | None:
+def _get_specific_form(serebii_soup, search_string) -> list[str] | None:
     # tbody <- alt_form_header.parent.parent
     #     tr <- alt_form_header.parent
     #         td "Alternate Forms" or "Gender Forms" <- alt_form_header
@@ -274,10 +288,9 @@ def get_form_images_name(pkmn_entry, pkmn_soup):
             logger.debug(f"get_form_images_name model didn't match a pattern: {model}")
 
 
-def download_image(url: str, path: str | Path) -> Path:
-    logger.info(f"Processing {url} -> {path}")
-    if type(path) == str:
-        path = Path(path)
+def download_image(url: str, path_str: str | Path) -> Path:
+    logger.info(f"Processing {url} -> {path_str}")
+    path = Path(path_str)
     path_err = path.with_suffix(".err")
     if not path.exists():
         image = get_url(url)
@@ -307,9 +320,9 @@ def download_image(url: str, path: str | Path) -> Path:
         return path
 
 
-def load_dex(dex_file: str | Path) -> List[PkmnEntry]:
+def load_dex(dex_file: str | Path) -> list[PkmnEntry]:
     if Path(dex_file).exists():
-        with open(dex_file, "r", encoding="windows-1252") as dex_json:
+        with open(dex_file, encoding="windows-1252") as dex_json:
             list_of_json = json.load(dex_json)
             for pkmn in list_of_json:
                 pkmn["unique_model_images"] = [
@@ -320,7 +333,7 @@ def load_dex(dex_file: str | Path) -> List[PkmnEntry]:
         return []
 
 
-def save_dex(dex_file: str | Path, dex: List[PkmnEntry]) -> None:
+def save_dex(dex_file: str | Path, dex: list[PkmnEntry]) -> None:
     with open(dex_file, "w", encoding="windows-1252") as dex_json:
         logger.debug("Saving json")
         dex = sorted(dex, key=lambda d: d.pdex)
@@ -342,6 +355,8 @@ def get_url(url: str) -> httpx.Response:
             cache[url] = response
             logger.debug(f"Add {url} to cache")
             cache.close()
+            return response
+        else:
             return response
 
 
@@ -424,47 +439,47 @@ UNAVAILABLE_IN_SV = [
 # Due to unavailable forms, some pkmn get skipped because their original form isn't listed
 # Or in Tauros case, Paladean Form\nCombat Breed gets smooshed together Paladean FormCombat Breed
 TO_ADD = [
-    {
-        "name": "Pikachu",
-        "pdex": 74,
-        "ndex": 25,
-        "male": 50,
-        "female": 50,
-        "japanese": "Pikachuピカチュウ",
-        "french": "Pikachu",
-        "german": "Pikachu",
-        "korean": "피카츄",
-        "gender_models": ["Male", "Female"],
-        "form_models": [],
-        "unique_model_images": [
-            FormTuple("Male", "025.png"),
-            FormTuple("Female", "025-f.png"),
+    PkmnEntry(
+        name="Pikachu",
+        pdex=74,
+        ndex=25,
+        male=50,
+        female=50,
+        japanese="Pikachuピカチュウ",
+        french="Pikachu",
+        german="Pikachu",
+        korean="피카츄",
+        gender_models=["Male", "Female"],
+        form_models=[],
+        unique_model_images=[
+            FormTuple("Male", "025.png", False),
+            FormTuple("Female", "025-f.png", False),
         ],
-        "complete": False,
-    },
-    {
-        "name": "Tauros",
-        "pdex": 223,
-        "ndex": 128,
-        "male": 100,
-        "female": 0,
-        "japanese": "Kentaurosケンタロス",
-        "french": "Tauros",
-        "german": "Tauros",
-        "korean": "켄타로스",
-        "gender_models": ["Uniform"],
-        "form_models": [
+        complete=False,
+    ),
+    PkmnEntry(
+        name="Tauros",
+        pdex=223,
+        ndex=128,
+        male=100,
+        female=0,
+        japanese="Kentaurosケンタロス",
+        french="Tauros",
+        german="Tauros",
+        korean="켄타로스",
+        gender_models=["Uniform"],
+        form_models=[
             "Paldean Form Combat Breed",
             "Paldean Form Blaze Breed",
             "Paldean Form Aqua Breed",
         ],
-        "unique_model_images": [
-            FormTuple("Uniform|Paldean Form Combat Breed", "128-p.png"),
-            FormTuple("Uniform|Paldean Form Blaze Breed", "128-b.png"),
-            FormTuple("Uniform|Paldean Form Aqua Breed", "128-a.png"),
+        unique_model_images=[
+            FormTuple("Uniform|Paldean Form Combat Breed", "128-p.png", False),
+            FormTuple("Uniform|Paldean Form Blaze Breed", "128-b.png", False),
+            FormTuple("Uniform|Paldean Form Aqua Breed", "128-a.png", False),
         ],
-        "complete": False,
-    },
+        complete=False,
+    ),
 ]
 
 
@@ -475,9 +490,10 @@ def generate_data(data_file: str | Path):
         f"https://serebii.net/{url}" for url in get_sv_pokedex()
     ]  # [222:223] slice to test range
     logger.debug(f"Found {len(list_of_pkmn_urls)} Pokemon urls")
+    if len(list_of_pkmn_urls) == 0:
+        raise ValueError("No pokemon urls found")
     for pkmn_url in list_of_pkmn_urls:
         # process each url
-        pkmn_list = []
         pkmn = get_pkmn_page(pkmn_url)
         dex = load_dex(data_file)
         if pkmn is None:
@@ -491,8 +507,7 @@ def generate_data(data_file: str | Path):
     # Correct missing data
     dex = load_dex(data_file)
     changed = False
-    for manual_added in TO_ADD:
-        pkmn = PkmnEntry(**manual_added)
+    for pkmn in TO_ADD:
         if pkmn.ndex not in [x.ndex for x in dex]:
             changed = True
             logger.info(f"Loading Manual pokemon {pkmn.name} # {pkmn.pdex}")
