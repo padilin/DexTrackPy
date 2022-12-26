@@ -12,6 +12,12 @@ A simple python project to track dex progress. It currently pulls all gen 9 and 
   - [ ] Pokedex Completion
   - [ ] Simple living dex
 - [x] Support images
-- [ ] Make the gui less ugly
 - [ ] CLI?
 - [ ] Documentation
+- Gui (Make the gui less ugly)
+  - [ ] Pre-load window to allow choosing image + data folders
+  - [ ] Output progress
+  - [ ] Support multiple types of tracking
+  - [ ] Clean up grid of pkmn in boxes
+  - [ ] Clean up text display in boxes
+  - [ ] BUG: opening more than 1 image bugs wont let you close
