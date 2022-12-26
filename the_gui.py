@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import base64
 import io
 import json
+import xml.sax.saxutils
 from pathlib import Path
 from typing import Tuple, List
 
@@ -8,31 +11,35 @@ import PIL.Image
 import PySimpleGUI as sg
 from loguru import logger
 
-from serebii_scrape import generate_data
+from serebii_scrape import generate_data, generate_images, load_dex, PkmnEntry, save_dex
 
 
 # JSON_FILE = "data/dex_with_img.json"
-JSON_FILE = "data/delete_me.json"
-if not Path(JSON_FILE).exists():
-    with open(JSON_FILE, "w", encoding="windows-1252") as pkmn_json:
-        json.dump([], pkmn_json, indent=2)
-    generate_data(JSON_FILE)
+JSON_FILE = "data/dex_v3.1.json"
+IMAGE_FOLDER = "images"
+# generate_data(JSON_FILE)
+# generate_images(JSON_FILE, IMAGE_FOLDER)
+pkmn_dex = load_dex(JSON_FILE)
 
 sg.theme("Dark Green 7")
 
-pkmn_dex = []
-pkmn_rows = []
-with open(JSON_FILE, "r", encoding="windows-1252") as pkmn_json:
-    pkmn_dex = json.load(pkmn_json)
-    pkmn_dex = sorted(pkmn_dex, key=lambda d: d["PDex"])
-
 
 SETTINGS_FILE = "data/settings.json"
+# Defaults
 STARTING_PC_BOX = 1
-if Path(SETTINGS_FILE).exists():
-    with open(SETTINGS_FILE, "r") as settings_json:
-        settings = json.load(settings_json)
-        STARTING_PC_BOX = settings["-BOXOFFSET-"]
+
+
+def load_settings(settings_file: str | Path):
+    if type(settings_file) == str:
+        settings_file = Path(settings_file)
+    if settings_file.exists():
+        with open(settings_file, "r") as settings_json:
+            settings = json.load(settings_json)
+            if "-BOXOFFSET-" in settings:
+                STARTING_PC_BOX = settings["-BOXOFFSET-"]
+
+
+load_settings(SETTINGS_FILE)
 
 
 def calculate_box_row_pos(count: int) -> Tuple[int, int, int]:
@@ -48,44 +55,102 @@ def calculate_box_row_pos(count: int) -> Tuple[int, int, int]:
     return box, row, pos
 
 
-def generate_pkmn_rows() -> List[sg.Element]:
-    for count, pkmn in enumerate(pkmn_dex):
-        # Make string description of form nicer to read
-        current_form = pkmn["Form"].replace("Uniform", "Uni").split("+")
-        background_color = sg.DEFAULT_BACKGROUND_COLOR
-        if count % 2 == 0:
-            background_color = "dark slate gray"
-        box, row, pos = calculate_box_row_pos(count)
-        pkmn_rows.append(
-            [
-                sg.Checkbox(
-                    "Caught?",
-                    default=pkmn["Complete"],
-                    background_color=background_color,
-                ),
-                sg.Text(
-                    f"{pkmn['PDex']} / {pkmn['NDex']} - {pkmn['Name']} - {' '.join(current_form)}",
-                    background_color=background_color,
-                ),
-                sg.Push(background_color=background_color),
-                sg.Text(
-                    f"Box {box:02}, Row {row:02}, Position {pos:02}",
-                    background_color=background_color,
-                    key=f"-POSITION-{count}-",
-                ),
-            ]
-        )
-    halfway = int(len(pkmn_rows) / 2)
+class RecordedPkmnTuple:
+    """This is data/format that is important to the GUI"""
+
+    def __init__(
+        self,
+        pkmn: PkmnEntry,
+        form_name: str,
+        form_img: str,
+        form_complete: bool,
+        box: int,
+        row: int,
+        pos: int,
+        count: int,
+    ):
+        self.pkmn = pkmn
+        self.form_name = form_name
+        self.form_img = form_img
+        self.form_complete = form_complete
+        self.box = box
+        self.row = row
+        self.pos = pos
+        self.count = count
+        self.key = f"-POSITION-{self.count}-"
+
+    def update_box_row_pos(self):
+        self.box, self.row, self.pos = calculate_box_row_pos(self.count)
+
+    @property
+    def box_location_text(self):
+        return f"Box {self.box:02}, Row {self.row:02}, Position {self.pos:02}"
+
+    @property
+    def pdex_name_form_text(self):
+        return f"{self.pkmn.pdex} / {self.pkmn.ndex} - {self.pkmn.name} - {self.form_name.replace('|', ' ')}"
+
+
+record_pkmn: List[RecordedPkmnTuple] = []
+
+
+def generate_pkmn_layout() -> List[sg.Element]:
+    background_color = sg.DEFAULT_BACKGROUND_COLOR
+    alt_background_color = "dark slate gray"
+    pkmn_layout = []
+    count = 0
+    for pkmn in pkmn_dex:
+        for unique_model in pkmn.unique_model_images:
+            if count % 2 == 0:
+                # Highlight every other row
+                background_color = alt_background_color
+            split_form_name = unique_model.form_name.replace("|", " ")
+            box, row, pos = calculate_box_row_pos(count)
+            this_form = RecordedPkmnTuple(
+                pkmn,
+                unique_model.form_name,
+                unique_model.img_name,
+                unique_model.complete,
+                box,
+                row,
+                pos,
+                count,
+            )
+            record_pkmn.append(this_form)
+            # Generate: {check box for caught} {Dex number} {National dex number} {name} {push right} {box, row, pos}
+            pkmn_layout.append(
+                [
+                    sg.Checkbox(
+                        "Caught?",
+                        default=unique_model.complete,
+                        background_color=background_color,
+                        key=f"-CAUGHT-{this_form.count}",
+                        enable_events=True,
+                    ),
+                    sg.Text(
+                        this_form.pdex_name_form_text,
+                        background_color=background_color,
+                    ),
+                    sg.Push(background_color=background_color),
+                    sg.Text(
+                        this_form.box_location_text,
+                        background_color=background_color,
+                        key=f"-POSITION-{count}-",
+                    ),
+                ]
+            )
+            count += 1
+    halfway = int(len(pkmn_layout) / 2)
     return [
         sg.Column(
-            pkmn_rows[:halfway],
+            pkmn_layout[:halfway],
             vertical_scroll_only=True,
             scrollable=True,
             size=(600, 300),
             key="-PKMN-0-",
         ),
         sg.Column(
-            pkmn_rows[halfway:],
+            pkmn_layout[halfway:],
             vertical_scroll_only=True,
             scrollable=True,
             size=(600, 300),
@@ -94,25 +159,80 @@ def generate_pkmn_rows() -> List[sg.Element]:
     ]
 
 
-list_pkmn = generate_pkmn_rows()
+def generate_complete_progress() -> Tuple[int, int]:
+    return int(len([x for x in record_pkmn if x.form_complete])), int(len(record_pkmn))
+
+
+def generate_box_entry(
+    box: int, row: int, pos: int
+) -> Tuple[List[sg.Element], List[sg.Element], List[sg.Element]]:
+    # Pull exact box, row, pos out of loaded in dex
+    entry = [x for x in record_pkmn if x.box == box and x.row == row and x.pos == pos]
+    if len(entry) < 1:
+        return (
+            [
+                sg.Button(
+                    "",
+                    image_data=convert_to_bytes(f"images\\sprite\\blank.png", (40, 40)),
+                ),
+                sg.Push(),
+            ],
+            [sg.VPush(), sg.Text(""), sg.Push()],
+            [sg.VPush(), sg.Text(""), sg.Push()],
+        )
+    if len(entry) > 1:
+        logger.warning(
+            f"Found more than 1 match for Box {box} Row {row} Pos {pos} in {entry}"
+        )
+        return (
+            [
+                sg.Button(
+                    "",
+                    image_data=convert_to_bytes(f"images\\sprite\\blank.png", (40, 40)),
+                ),
+                sg.Push(),
+            ],
+            [sg.VPush()],
+            [sg.VPush()],
+        )
+    entry = entry[0]
+    border = 0
+    if entry.form_complete:
+        # Make completed forms stand out
+        border = 4
+    image = [
+        sg.Button(
+            "",
+            image_data=convert_to_bytes(f"images\\sprite\\{entry.form_img}"),
+            key=entry.form_img,
+            button_color=(sg.theme_text_color(), sg.theme_background_color()),
+            border_width=border,
+        ),
+        sg.Push(),
+    ]
+    name = [sg.Text(f"{entry.pkmn.name}"), sg.Push()]
+    form = [sg.Text(f"{entry.form_name}"), sg.Push()]
+    return image, name, form
 
 
 def make_window1():
+    current_progress, total_length = generate_complete_progress()
     layout = [
         [sg.Text("Gotta Catch them all!")],
-        list_pkmn,
+        generate_pkmn_layout(),
         [
             sg.Save(),
-            sg.Exit(),
             sg.Push(),
             sg.Text("Progress:"),
             sg.ProgressBar(
                 max_value=len(pkmn_dex), key="-PROGRESS-", size=(50, 10), style="clam"
             ),
             sg.Text(
-                f"{len([x for x in pkmn_dex if x['Complete']])}/{len(pkmn_dex)}",
+                f"{current_progress} / {total_length}",
                 key="-PROGRESS-TEXT-",
             ),
+            sg.Push(),
+            sg.Exit(),
             sg.Push(),
             sg.Text("Box Offset", justification="right"),
             sg.Spin(
@@ -127,7 +247,7 @@ def make_window1():
 
 
 def convert_to_bytes(file_or_bytes, resize=None):
-    '''
+    """
     Will convert into bytes and optionally resize an image that is a file or a base64 bytes object.
     Turns into  PNG format in the process so that can be displayed by tkinter
     :param file_or_bytes: either a string filename or a bytes base64 image object
@@ -136,7 +256,7 @@ def convert_to_bytes(file_or_bytes, resize=None):
     :type resize: (Tuple[int, int] or None)
     :return: (bytes) a byte-string object
     :rtype: (bytes)
-    '''
+    """
     if isinstance(file_or_bytes, str):
         img = PIL.Image.open(file_or_bytes)
     else:
@@ -149,8 +269,11 @@ def convert_to_bytes(file_or_bytes, resize=None):
     cur_width, cur_height = img.size
     if resize:
         new_width, new_height = resize
-        scale = min(new_height/cur_height, new_width/cur_width)
-        img = img.resize((int(cur_width*scale), int(cur_height*scale)), PIL.Image.ANTIALIAS)
+        scale = min(new_height / cur_height, new_width / cur_width)
+        img = img.resize(
+            (int(cur_width * scale), int(cur_height * scale)),
+            PIL.Image.Resampling.LANCZOS,
+        )
     bio = io.BytesIO()
     img.save(bio, format="PNG")
     del img
@@ -159,103 +282,140 @@ def convert_to_bytes(file_or_bytes, resize=None):
 
 
 def make_window2():
-    pkmn_name_location = []
-    longest_name = 0
+    # pkmn_name_location = []
     # Pulling information for ease of use
-    for count, pkmn in enumerate(pkmn_dex):
-        if len(pkmn["Name"]) > 0:
-            longest_name = len(pkmn["Name"])
-        box, row, pos = calculate_box_row_pos(count)
-        pkmn_name_location.append((pkmn["Name"], pkmn["Form_Image"], box, row, pos, pkmn["Form"], pkmn["Complete"]))
+    # for count, pkmn in enumerate(pkmn_dex):
+    #     if len(pkmn.name) > 0:
+    #         longest_name = len(pkmn.name)
+    #     box, row, pos = calculate_box_row_pos(count)
+    #     pkmn_name_location.append((pkmn.name, pkmn["Form_Image"], box, row, pos, pkmn["Form"], pkmn.complete))
     # Get important information to creating boxes
-    first_box_no = min([x[2] for x in pkmn_name_location])
-    last_box_no = max([x[2] for x in pkmn_name_location])
+    first_box_no = min([x.box for x in record_pkmn])
+    last_box_no = max([x.box for x in record_pkmn])
     box_nos = range(first_box_no, last_box_no + 1)
-    row_nos = range(1, 5+1)
-    pos_nos = range(1, 6+1)
+    row_nos = range(1, 5 + 1)
+    pos_nos = range(1, 6 + 1)
     tab_group_contents = []
-    # Each box is a sg.Tab("Box {No}", [list of 10 lists. 5 text and 5 image each])
+    # Each box is a sg.Tab("Box {No}", [list of 15 lists. 5 name, 5 form names, and 5 image each])
     for box_no in box_nos:
         tab_contents = []
         for row_no in row_nos:
             # Make the sets of 2 rows. Text and image
-            header_row_contents = [sg.Push()]
+            name_row_contents = [sg.Push()]
             image_row_contents = [sg.Push()]
-            form_row_contents = [sg.Push()]
+            form_name_row_contents = [sg.Push()]
             for pos_no in pos_nos:
-                if found_pkmn := [(x[0], x[1], x[5], x[6]) for x in pkmn_name_location if x[2] == box_no and x[3] == row_no and x[4] == pos_no]:
-                    pkmn_name, img_path_suffix, form_name, is_complete = found_pkmn[0]
-                    border = 0
-                    if is_complete:
-                        border = 4
-                    # image_row_contents.append(sg.Image(convert_to_bytes(f"images\\sprite\\{img_path_suffix}")))
-                    image_row_contents.append(sg.Button("", image_data=convert_to_bytes(f"images\\sprite\\{img_path_suffix}"), key=img_path_suffix, button_color=(sg.theme_text_color(), sg.theme_background_color()), border_width=border))
-                    header_row_contents.append(sg.Text(f"{pkmn_name}", justification="c", size=(longest_name, None)))
-                    form_row_contents.append(sg.Text(f"{form_name}", justification="c", size=(longest_name, None)))
-                    image_row_contents.append(sg.Push())
-                    header_row_contents.append(sg.Push())
-                    form_row_contents.append(sg.Push())
+                image, name, form = generate_box_entry(box_no, row_no, pos_no)
+                name_row_contents.extend(name)
+                image_row_contents.extend(image)
+                form_name_row_contents.extend(form)
             if image_row_contents:
                 tab_contents.append(image_row_contents)
-                tab_contents.append(header_row_contents)
-                tab_contents.append(form_row_contents)
+                tab_contents.append(name_row_contents)
+                tab_contents.append(form_name_row_contents)
         if tab_contents:
-            tab_group_contents.append(sg.Tab(f"Box {box_no:02}", tab_contents, element_justification="c"))
+            tab_group_contents.append(
+                sg.Tab(f"Box {box_no:02}", tab_contents, element_justification="c")
+            )
     return sg.Window("Boxes", [[sg.TabGroup([tab_group_contents])]], finalize=True)
 
 
 def make_info_window():
-    return sg.Window("Pokemon Image", [[sg.Exit()]], grab_anywhere=True, no_titlebar=True, finalize=True)
+    return sg.Window(
+        "Pokemon Image",
+        [[sg.Exit()]],
+        grab_anywhere=True,
+        no_titlebar=True,
+        finalize=True,
+    )
 
 
 def main():
     window1, window2, info_window = make_window1(), make_window2(), None
 
+    progress, maximum = generate_complete_progress()
+    window1["-PROGRESS-"].update(f"{progress}")
+    window1["-PROGRESS-TEXT-"].update(f"{progress} / {maximum}")
+    window1.refresh()
+
     try:
         while True:
-        # Check for events. Will fire off a __TIMEOUT__ every TIMEOUT milliseconds if no events happen
+            # Check for events. Will fire off a __TIMEOUT__ every TIMEOUT milliseconds if no events happen
             window, event, values = sg.read_all_windows(timeout=10000)
             logger.debug(f"GUI > windows {window} event {event} with {values}")
             if event == "-BOXOFFSET-":
                 if window == window1:
                     STARTING_PC_BOX = values["-BOXOFFSET-"]
-                    for count in range(len(pkmn_dex)):
-                        box, row, pos = calculate_box_row_pos(count)
-                        window1[f"-POSITION-{count}-"].update(value=f"Box {box:02}, Row {row:02}, Position {pos:02}")
+                    for pkmn in record_pkmn:
+                        pkmn.update_box_row_pos()
+                        window1[pkmn.key].update(pkmn.box_location_text)
                     window1.refresh()
-            elif event == "Save" and window == window1:
-                settings = {}
-                for k, v in values.items():
-                    if k == "-BOXOFFSET-":
-                        settings[k] = v
-                    if isinstance(k, int):
-                        pkmn_dex[k]["Complete"] = v
-                with open(JSON_FILE, "w", encoding="windows-1252") as pkmn_json:
-                    json.dump(pkmn_dex, pkmn_json, indent=2)
-                with open(SETTINGS_FILE, "w") as settings_json:
-                    json.dump(settings, settings_json, indent=2)
-            elif (window == window1 or window == window2) and (event == sg.WIN_CLOSED or event == "Exit"):
+            elif event == "Save":
+                save_everything(values)
+            elif event in [f"-CAUGHT-{x.count}" for x in record_pkmn]:
+                save_everything(values)
+            elif (window == window1 or window == window2) and (
+                event == sg.WIN_CLOSED or event == "Exit"
+            ):
                 break
             elif window == window2 and ".png" in event:
                 image_suffix = event
-                pkmn_info_layout = [[sg.Push(), sg.Image(convert_to_bytes(f"images\\normal\\{image_suffix}")), sg.Push()], [sg.Push(), sg.Text("Normal image", justification="c"),sg.Push()], [sg.Push(), sg.Image(convert_to_bytes(f"images\\shiny\\{image_suffix}")), sg.Push()], [sg.Push(), sg.Text("Shiny image", justification="c"), sg.Push()], [sg.Push(), sg.Exit(), sg.Push()]]
+                pkmn_info_layout = [
+                    [
+                        sg.Push(),
+                        sg.Image(convert_to_bytes(f"images\\normal\\{image_suffix}")),
+                        sg.Push(),
+                    ],
+                    [sg.Push(), sg.Text("Normal image", justification="c"), sg.Push()],
+                    [
+                        sg.Push(),
+                        sg.Image(convert_to_bytes(f"images\\shiny\\{image_suffix}")),
+                        sg.Push(),
+                    ],
+                    [sg.Push(), sg.Text("Shiny image", justification="c"), sg.Push()],
+                    [sg.Push(), sg.Exit(), sg.Push()],
+                ]
                 logger.info(f"Displaying Pokemon image {image_suffix}")
-                info_window = sg.Window("Pokemon Image", pkmn_info_layout, grab_anywhere=True, no_titlebar=True, finalize=True)
+                info_window = sg.Window(
+                    "Pokemon Image",
+                    pkmn_info_layout,
+                    grab_anywhere=True,
+                    no_titlebar=True,
+                    finalize=True,
+                )
             elif window == info_window and event == "Exit":
                 info_window.close()
             if True:
-                window1["-PROGRESS-"].update(len([x for x in pkmn_dex if x["Complete"]]))
-                window1["-PROGRESS-TEXT-"].update(
-                    f"{len([x for x in pkmn_dex if x['Complete']])}/{len(pkmn_dex)}"
-                )
+                progress, maximum = generate_complete_progress()
+                window1["-PROGRESS-"].update(f"{progress}")
+                window1["-PROGRESS-TEXT-"].update(f"{progress} / {maximum}")
                 window2.refresh()
     except Exception as e:
-        sg.Print("Exception in the program: ", sg.__file__, e, keep_on_top=True, wait=True)
+        sg.Print(
+            "Exception in the program: ", sg.__file__, e, keep_on_top=True, wait=True
+        )
 
     window1.close()
     window2.close()
     if info_window is not None:
         info_window.close()
+
+
+def save_everything(values):
+    settings = {}
+    for k, v in values.items():
+        if k == "-BOXOFFSET-":
+            settings[k] = v
+        elif k.startswith("-CAUGHT-"):
+            entry_no = int(k.lstrip("-CAUGHT-"))
+            entry = [x for x in record_pkmn if x.count == entry_no][0]
+            entry.form_complete = v
+            for unique in entry.pkmn.unique_model_images:
+                if unique.form_name == entry.form_name:
+                    unique.complete = entry.form_complete
+    save_dex(JSON_FILE, pkmn_dex)
+    with open(SETTINGS_FILE, "w") as settings_json:
+        json.dump(settings, settings_json, indent=2)
 
 
 if __name__ == "__main__":
